@@ -2,11 +2,11 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Family Tree - Upload JSON</title>
+  <title>Family Tree - Editable</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body {
-      text-align: center; /* center content */
+      text-align: center;
       font-family: sans-serif;
     }
 
@@ -30,6 +30,7 @@
     .node text {
       font: 14px sans-serif;
       text-anchor: middle;
+      cursor: pointer;
     }
     .link {
       fill: none;
@@ -52,6 +53,7 @@
 <div id="controls">
   <input type="file" id="jsonFile" accept=".json">
   <button id="export-png">Export as PNG</button>
+  <button id="download-json">Download JSON</button>
 </div>
 
 <svg width="2500" height="1500" viewBox="0 0 2500 1500"></svg>
@@ -64,10 +66,14 @@ function textWidth(text, font="14px sans-serif"){
     return ctx.measureText(text).width + 20;
 }
 
+// Global variable to hold tree root for download
+let treeRoot = null;
+
 // Function to render tree
 function renderTree(data) {
+    treeRoot = data; // save for JSON download
     const svgNode = d3.select("svg");
-    svgNode.selectAll("*").remove(); // clear previous tree
+    svgNode.selectAll("*").remove();
 
     const width = 2500, height = 1500;
     const svg = svgNode.append("g").attr("transform","translate(100,50)");
@@ -102,7 +108,14 @@ function renderTree(data) {
 
     node.append("text")
         .attr("dy",5)
-        .text(d=>d.data.name);
+        .text(d => d.data.name)
+        .on("click", function(event, d){
+            const newName = prompt("Edit name:", d.data.name);
+            if(newName !== null && newName.trim() !== ""){
+                d.data.name = newName;
+                d3.select(this).text(newName);
+            }
+        });
 
     // Spouses
     root.descendants().forEach(d=>{
@@ -122,7 +135,14 @@ function renderTree(data) {
                .attr("x", d.y + textWidth(d.data.name)/2 + spacing + w/2)
                .attr("y", d.x + 5)
                .attr("text-anchor","middle")
-               .text(d.data.spouse);
+               .text(d.data.spouse)
+               .on("click", function(){
+                   const newName = prompt("Edit spouse name:", d.data.spouse);
+                   if(newName !== null && newName.trim() !== ""){
+                       d.data.spouse = newName;
+                       d3.select(this).text(newName);
+                   }
+               });
 
             svg.append("line")
                .attr("x1", d.y + textWidth(d.data.name)/2)
@@ -178,7 +198,7 @@ function exportSVGAsPNG(svgElement, filename="family_tree.png", scale=2) {
         canvas.height = svgElement.clientHeight * scale;
         const ctx = canvas.getContext("2d");
 
-        ctx.fillStyle = "#ffffff"; // white background
+        ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -198,7 +218,20 @@ document.getElementById("export-png").onclick = function() {
     const svg = document.querySelector("svg");
     exportSVGAsPNG(svg, "family_tree.png", 2);
 };
-</script>
 
+// Download JSON button
+document.getElementById("download-json").onclick = function() {
+    if(!treeRoot){
+        alert("No tree loaded.");
+        return;
+    }
+    const jsonStr = JSON.stringify(treeRoot, null, 2);
+    const blob = new Blob([jsonStr], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "family_tree_updated.json";
+    a.click();
+};
+</script>
 </body>
 </html>
