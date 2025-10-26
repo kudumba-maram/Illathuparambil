@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Family Tree - Upload JSON</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      text-align: center; /* center content */
+      font-family: sans-serif;
+    }
+
+    #controls {
+      margin: 20px 0;
+    }
+
+    input[type="file"], button {
+      padding: 12px 24px;
+      font-size: 16px;
+      margin: 5px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .node rect {
+      fill: #fff;
+      stroke: steelblue;
+      stroke-width: 2px;
+    }
+    .node text {
+      font: 14px sans-serif;
+      text-anchor: middle;
+    }
+    .link {
+      fill: none;
+      stroke: #ccc;
+      stroke-width: 2px;
+    }
+    .spouse-link {
+      stroke: #ff6347;
+      stroke-width: 2px;
+    }
+
+    svg {
+      border: 1px solid #ccc;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="controls">
+  <input type="file" id="jsonFile" accept=".json">
+  <button id="export-png">Export as PNG</button>
+</div>
+
+<svg width="2500" height="1500" viewBox="0 0 2500 1500"></svg>
+
+<script>
+// Function to measure text width
+function textWidth(text, font="14px sans-serif"){
+    const ctx = document.createElement("canvas").getContext("2d");
+    ctx.font = font;
+    return ctx.measureText(text).width + 20;
+}
+
+// Function to render tree
+function renderTree(data) {
+    const svgNode = d3.select("svg");
+    svgNode.selectAll("*").remove(); // clear previous tree
+
+    const width = 2500, height = 1500;
+    const svg = svgNode.append("g").attr("transform","translate(100,50)");
+
+    const root = d3.hierarchy(data);
+    const treeLayout = d3.tree().size([height-100, width-300]);
+    treeLayout(root);
+
+    // Links
+    svg.selectAll(".link")
+       .data(root.links())
+       .enter()
+       .append("path")
+       .attr("class","link")
+       .attr("d", d3.linkHorizontal().x(d=>d.y).y(d=>d.x));
+
+    // Nodes
+    const node = svg.selectAll(".node")
+                    .data(root.descendants())
+                    .enter()
+                    .append("g")
+                    .attr("class","node")
+                    .attr("transform", d=>`translate(${d.y},${d.x})`);
+
+    node.append("rect")
+        .attr("x", d => -textWidth(d.data.name)/2)
+        .attr("y",-15)
+        .attr("width", d => textWidth(d.data.name))
+        .attr("height",30)
+        .attr("rx",10)
+        .attr("ry",10);
+
+    node.append("text")
+        .attr("dy",5)
+        .text(d=>d.data.name);
+
+    // Spouses
+    root.descendants().forEach(d=>{
+        if(d.data.spouse){
+            const w = textWidth(d.data.spouse);
+            const spacing = 20;
+            svg.append("rect")
+               .attr("x", d.y + textWidth(d.data.name)/2 + spacing)
+               .attr("y", d.x - 15)
+               .attr("width", w)
+               .attr("height",30)
+               .attr("rx",10)
+               .attr("ry",10)
+               .attr("fill","#ffe4e1");
+
+            svg.append("text")
+               .attr("x", d.y + textWidth(d.data.name)/2 + spacing + w/2)
+               .attr("y", d.x + 5)
+               .attr("text-anchor","middle")
+               .text(d.data.spouse);
+
+            svg.append("line")
+               .attr("x1", d.y + textWidth(d.data.name)/2)
+               .attr("y1", d.x)
+               .attr("x2", d.y + textWidth(d.data.name)/2 + spacing)
+               .attr("y2", d.x)
+               .attr("class","spouse-link");
+        }
+    });
+}
+
+// Handle JSON file upload
+document.getElementById('jsonFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function() {
+        try {
+            const data = JSON.parse(reader.result);
+            renderTree(data);
+        } catch(err) {
+            alert("Invalid JSON file.");
+        }
+    };
+    reader.readAsText(file);
+});
+
+// Export PNG function
+function exportSVGAsPNG(svgElement, filename="family_tree.png", scale=2) {
+    const clone = svgElement.cloneNode(true);
+
+    const styleSheets = Array.from(document.styleSheets);
+    let cssText = "";
+    styleSheets.forEach(sheet => {
+        try { Array.from(sheet.cssRules).forEach(rule => { cssText += rule.cssText + "\n"; }); }
+        catch(e) {}
+    });
+    const style = document.createElement("style");
+    style.innerHTML = cssText;
+    clone.insertBefore(style, clone.firstChild);
+
+    const serializer = new XMLSerializer();
+    let svgString = serializer.serializeToString(clone);
+    svgString = '<?xml version="1.0" standalone="no"?>\r\n' + svgString;
+
+    const blob = new Blob([svgString], {type:"image/svg+xml;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+
+    const img = new Image();
+    img.onload = function() {
+        const canvas = document.createElement("canvas");
+        canvas.width = svgElement.clientWidth * scale;
+        canvas.height = svgElement.clientHeight * scale;
+        const ctx = canvas.getContext("2d");
+
+        ctx.fillStyle = "#ffffff"; // white background
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+
+        const pngFile = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = pngFile;
+        a.download = filename;
+        a.click();
+    };
+    img.src = url;
+}
+
+// PNG button
+document.getElementById("export-png").onclick = function() {
+    const svg = document.querySelector("svg");
+    exportSVGAsPNG(svg, "family_tree.png", 2);
+};
+</script>
+
+</body>
+</html>
